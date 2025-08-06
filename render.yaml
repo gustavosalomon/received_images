@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: smart-parking-server
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python todoterreno.py"
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "true"
