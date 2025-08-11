@@ -1,7 +1,4 @@
-Flask
-torch
-torchvision
+flask
 pillow
-numpy
-opencv-python
-gunicorn
+ultralytics
+torch
