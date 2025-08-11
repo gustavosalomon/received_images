@@ -3,6 +3,5 @@ services:
     name: received-images-api
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    startCommand: gunicorn app:app
     plan: free
-
