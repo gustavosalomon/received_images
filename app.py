@@ -5,13 +5,13 @@ from ultralytics import YOLO
 
 app = Flask(__name__)
 
-RECEIVED_FOLDER = 'received_images'
-RESULT_FOLDER = 'result_images'
+# Usamos /tmp para evitar conflictos en Render
+RECEIVED_FOLDER = '/tmp/received_images'
+RESULT_FOLDER = '/tmp/result_images'
 
 os.makedirs(RECEIVED_FOLDER, exist_ok=True)
 os.makedirs(RESULT_FOLDER, exist_ok=True)
 
-# Carga el modelo YOLO (usa yolov5s.pt o el tuyo)
 model = YOLO('yolov5s.pt')
 
 @app.route('/upload', methods=['POST'])
