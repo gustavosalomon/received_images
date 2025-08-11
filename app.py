@@ -1,6 +1,6 @@
 import os
 import json
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify
 from ultralytics import YOLO
 
 app = Flask(__name__)
@@ -40,12 +40,20 @@ def upload_image():
                 'class': cls
             })
 
+        # Filtrar solo vehículos (car, motorcycle, bus, truck)
+        VEHICLE_CLASSES = [2, 3, 5, 7]  # clases COCO para vehículos
+        detections = [det for det in detections if det['class'] in VEHICLE_CLASSES]
+
+        ocupado = len(detections) > 0
+
+        # Guardar JSON (opcional)
         json_path = os.path.join(RESULT_FOLDER, os.path.splitext(filename)[0] + '.json')
         with open(json_path, 'w') as f:
             json.dump(detections, f, indent=4)
 
         return jsonify({
-            "message": "Imagen procesada correctamente",
+            "estado": "ocupado" if ocupado else "libre",
+            "numero_detectados": len(detections),
             "detections": detections
         })
 
