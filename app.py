@@ -1,19 +1,13 @@
-from flask import Flask, request, jsonify, render_template_string, send_from_directory
+from flask import Flask, request, jsonify, render_template_string
 from ultralytics import YOLO
 from PIL import Image
-import os
 import numpy as np
-import io
 import base64
+import cv2
 
 app = Flask(__name__)
 
-RECEIVED_FOLDER = '/tmp/received_images'
-RESULT_FOLDER = '/tmp/result_images'
-os.makedirs(RECEIVED_FOLDER, exist_ok=True)
-os.makedirs(RESULT_FOLDER, exist_ok=True)
-
-# Carga automática del modelo YOLOv8n (se descarga si no está)
+# Cargar modelo YOLOv8n (liviano)
 model = YOLO('yolov8n.pt')
 
 HTML_PAGE = """
@@ -55,13 +49,10 @@ def upload_image():
     if 'image' not in request.files:
         return jsonify({"error": "No se encontró el archivo 'image'"}), 400
     file = request.files['image']
-    filename = file.filename or 'imagen.jpg'
-    save_path = os.path.join(RECEIVED_FOLDER, filename)
-    file.save(save_path)
 
-    # Reducir resolución para optimizar memoria
-    img = Image.open(save_path).convert("RGB")
-    img.thumbnail((640, 640), Image.LANCZOS)
+    # Abrir imagen y reducir resolución a 320x320 máximo
+    img = Image.open(file.stream).convert("RGB")
+    img.thumbnail((320, 320), Image.LANCZOS)
 
     # Convertir a numpy array para YOLO
     img_array = np.array(img)
