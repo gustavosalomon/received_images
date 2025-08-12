@@ -25,7 +25,10 @@ def upload_image():
     file.save(save_path)
 
     try:
+        # Ejecutar detección con YOLO
         results = model(save_path)
+
+        # Guardar imagen resultante (opcional)
         result_img_path = os.path.join(RESULT_FOLDER, filename)
         results[0].save(result_img_path)
 
@@ -44,18 +47,15 @@ def upload_image():
         VEHICLE_CLASSES = [2, 3, 5, 7]  # clases COCO para vehículos
         detections = [det for det in detections if det['class'] in VEHICLE_CLASSES]
 
-        ocupado = len(detections) > 0
+        ocupado = 1 if len(detections) > 0 else 0  # 1 = ocupado, 0 = libre
 
-        # Guardar JSON (opcional)
+        # Guardar JSON detallado (opcional)
         json_path = os.path.join(RESULT_FOLDER, os.path.splitext(filename)[0] + '.json')
         with open(json_path, 'w') as f:
             json.dump(detections, f, indent=4)
 
-        return jsonify({
-            "estado": "ocupado" if ocupado else "libre",
-            "numero_detectados": len(detections),
-            "detections": detections
-        })
+        # Respuesta mínima para MongoDB y Smart Parking
+        return jsonify({"ocupado": ocupado})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
