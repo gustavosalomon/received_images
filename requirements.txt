@@ -1,5 +1,6 @@
 flask
-pillow
 ultralytics
-torch
+opencv-python-headless
+pillow
 gunicorn
+
