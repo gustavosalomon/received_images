@@ -13,7 +13,7 @@ RESULT_FOLDER = '/tmp/result_images'
 os.makedirs(RECEIVED_FOLDER, exist_ok=True)
 os.makedirs(RESULT_FOLDER, exist_ok=True)
 
-# Cargar modelo YOLOv8 nano (más liviano que YOLOv5s)
+# Cargar modelo YOLOv8 nano (ligero y rápido)
 model = YOLO('yolov8n.pt')
 
 # Página web para prueba desde navegador
@@ -83,13 +83,18 @@ def upload_image():
         save_path = os.path.join(RECEIVED_FOLDER, filename)
         file.save(save_path)
 
-        # Reducir tamaño de imagen para ahorrar memoria
-        img = Image.open(save_path)
-        img.thumbnail((640, 640))
-        img.save(save_path)
+        # Reducir tamaño de imagen para ahorrar memoria en Render
+        img = Image.open(save_path).convert("RGB")
+        img.thumbnail((640, 640), Image.LANCZOS)
+        img.save(save_path, format="JPEG", quality=85)
 
-        # Procesar con YOLOv8n
-        results = model(save_path)
+        # Procesar con YOLOv8n (forzado a CPU)
+        results = model.predict(
+            source=save_path,
+            device="cpu",
+            conf=0.25,
+            imgsz=640
+        )
 
         # Guardar imagen procesada
         result_img_path = os.path.join(RESULT_FOLDER, filename)
@@ -103,7 +108,7 @@ def upload_image():
             if cls in VEHICLE_CLASSES:
                 detections.append({
                     'bbox': box.xyxy[0].tolist(),
-                    'confidence': box.conf[0].item(),
+                    'confidence': round(box.conf[0].item(), 3),
                     'class': cls
                 })
 
@@ -111,6 +116,8 @@ def upload_image():
 
         return jsonify({
             "ocupado": ocupado,
+            "numero_detectados": len(detections),
+            "detections": detections,
             "image_url": f"/result_images/{filename}"
         })
 
