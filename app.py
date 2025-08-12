@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string, redirect, url_for
 from ultralytics import YOLO
 from PIL import Image
 import numpy as np
@@ -75,6 +75,11 @@ def upload_image():
         })
 
     return render_template_string(HTML_PAGE, image_data=image_data, detections=detections)
+
+@app.route('/upload', methods=['GET'])
+def upload_get():
+    # Redirige GET a raíz para evitar error Method Not Allowed
+    return redirect(url_for('home'))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
