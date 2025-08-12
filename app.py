@@ -1,129 +1,95 @@
-import os
-import json
-from flask import Flask, request, jsonify, render_template_string, send_from_directory
+from flask import Flask, render_template_string, request, jsonify
 from ultralytics import YOLO
+import cv2
+import numpy as np
+import io
 from PIL import Image
+import base64
 
+# Inicializar Flask
 app = Flask(__name__)
 
-# Carpetas temporales en Render
-RECEIVED_FOLDER = '/tmp/received_images'
-RESULT_FOLDER = '/tmp/result_images'
+# Cargar modelo YOLOv8n (más liviano)
+model = YOLO("yolov8n.pt")
 
-os.makedirs(RECEIVED_FOLDER, exist_ok=True)
-os.makedirs(RESULT_FOLDER, exist_ok=True)
+# Página HTML de prueba
+HTML_PAGE = """
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Detección YOLOv8n</title>
+</head>
+<body>
+    <h1>Prueba de detección con YOLOv8n</h1>
+    <form action="/detect" method="post" enctype="multipart/form-data">
+        <input type="file" name="image" accept="image/*" required>
+        <button type="submit">Detectar</button>
+    </form>
+    {% if image_data %}
+        <h2>Resultado:</h2>
+        <img src="data:image/jpeg;base64,{{ image_data }}" alt="Resultado">
+    {% endif %}
+</body>
+</html>
+"""
 
-# Cargar modelo YOLOv8 nano (ligero y rápido)
-model = YOLO('yolov8n.pt')
+@app.route("/", methods=["GET"])
+def index():
+    return render_template_string(HTML_PAGE)
 
-# Página web para prueba desde navegador
-@app.route('/')
-def home():
-    return render_template_string("""
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <title>Prueba YOLO Smart Parking</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 40px; }
-            h1 { color: #2c3e50; }
-            form { margin-top: 20px; }
-            input[type=file] { margin-bottom: 10px; }
-            .resultado { margin-top: 20px; padding: 10px; background: #f1f1f1; border-radius: 8px; }
-        </style>
-    </head>
-    <body>
-        <h1>Subir imagen para detección</h1>
-        <form id="uploadForm">
-            <input type="file" name="image" accept="image/*" required><br>
-            <button type="submit">Enviar</button>
-        </form>
-        <div class="resultado" id="resultado"></div>
+@app.route("/detect", methods=["POST"])
+def detect():
+    if "image" not in request.files:
+        return jsonify({"error": "No se envió imagen"}), 400
 
-        <script>
-        document.getElementById("uploadForm").addEventListener("submit", async function(e) {
-            e.preventDefault();
-            const formData = new FormData(this);
-            document.getElementById("resultado").innerHTML = "Procesando...";
-            try {
-                const res = await fetch("/upload", {
-                    method: "POST",
-                    body: formData
-                });
-                const data = await res.json();
-                let html = "<pre>" + JSON.stringify(data, null, 2) + "</pre>";
-                if (data.image_url) {
-                    html += `<img src="${data.image_url}" style="max-width:400px;margin-top:10px;">`;
-                }
-                document.getElementById("resultado").innerHTML = html;
-            } catch (err) {
-                document.getElementById("resultado").innerHTML = "Error: " + err;
-            }
-        });
-        </script>
-    </body>
-    </html>
-    """)
+    file = request.files["image"]
 
-# Servir imágenes procesadas
-@app.route('/result_images/<filename>')
-def get_result_image(filename):
-    return send_from_directory(RESULT_FOLDER, filename)
+    # Leer y reducir resolución automáticamente
+    img = Image.open(file.stream).convert("RGB")
+    max_size = (640, 640)  # tamaño máximo
+    img.thumbnail(max_size, Image.LANCZOS)
 
-# Endpoint API para detección
-@app.route('/upload', methods=['POST'])
-def upload_image():
-    try:
-        if 'image' not in request.files:
-            return jsonify({"error": "No se encontró el archivo 'image'"}), 400
+    # Convertir a array
+    img_array = np.array(img)
 
-        file = request.files['image']
-        filename = file.filename or 'imagen.jpg'
-        save_path = os.path.join(RECEIVED_FOLDER, filename)
-        file.save(save_path)
+    # Detección con YOLOv8n
+    results = model.predict(img_array)
 
-        # Reducir tamaño de imagen para ahorrar memoria en Render
-        img = Image.open(save_path).convert("RGB")
-        img.thumbnail((640, 640), Image.LANCZOS)
-        img.save(save_path, format="JPEG", quality=85)
+    # Dibujar resultados
+    annotated_img = results[0].plot()
 
-        # Procesar con YOLOv8n (forzado a CPU)
-        results = model.predict(
-            source=save_path,
-            device="cpu",
-            conf=0.25,
-            imgsz=640
-        )
+    # Convertir a JPEG y luego a base64 para mostrar en HTML
+    _, buffer = cv2.imencode(".jpg", annotated_img)
+    img_base64 = base64.b64encode(buffer).decode("utf-8")
 
-        # Guardar imagen procesada
-        result_img_path = os.path.join(RESULT_FOLDER, filename)
-        results[0].save(result_img_path)
+    return render_template_string(HTML_PAGE, image_data=img_base64)
 
-        # Filtrar solo vehículos (car, motorcycle, bus, truck)
-        VEHICLE_CLASSES = [2, 3, 5, 7]
-        detections = []
-        for box in results[0].boxes:
-            cls = int(box.cls[0].item())
-            if cls in VEHICLE_CLASSES:
-                detections.append({
-                    'bbox': box.xyxy[0].tolist(),
-                    'confidence': round(box.conf[0].item(), 3),
-                    'class': cls
-                })
+@app.route("/api/detect", methods=["POST"])
+def api_detect():
+    """Endpoint API para detección que devuelve resultados en JSON"""
+    if "image" not in request.files:
+        return jsonify({"error": "No se envió imagen"}), 400
 
-        ocupado = 1 if len(detections) > 0 else 0
+    file = request.files["image"]
 
-        return jsonify({
-            "ocupado": ocupado,
-            "numero_detectados": len(detections),
-            "detections": detections,
-            "image_url": f"/result_images/{filename}"
+    # Leer y reducir resolución
+    img = Image.open(file.stream).convert("RGB")
+    max_size = (640, 640)
+    img.thumbnail(max_size, Image.LANCZOS)
+    img_array = np.array(img)
+
+    # Detección
+    results = model.predict(img_array)
+    detections = []
+    for box in results[0].boxes:
+        detections.append({
+            "cls": int(box.cls),
+            "confidence": float(box.conf),
+            "bbox": box.xyxy[0].tolist()
         })
 
-    except Exception as e:
-        print("Error en detección:", str(e))
-        return jsonify({"error": str(e)}), 500
+    return jsonify({"detections": detections})
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
