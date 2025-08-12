@@ -10,6 +10,9 @@ app = Flask(__name__)
 # Cargar modelo YOLOv8n (liviano)
 model = YOLO('yolov8n.pt')
 
+# Clases COCO para vehículos: car=2, motorcycle=3, bus=5, truck=7
+VEHICLE_CLASSES = [2, 3, 5, 7]
+
 HTML_PAGE = """
 <!DOCTYPE html>
 <html lang="es">
@@ -65,15 +68,32 @@ def upload_image():
     _, buffer = cv2.imencode('.jpg', annotated)
     image_data = base64.b64encode(buffer).decode('utf-8')
 
-    # Extraer detecciones
+    # Extraer detecciones y contar vehículos
     detections = []
+    vehicles_count = 0
     for box in results[0].boxes:
+        cls = int(box.cls)
+        confidence = float(box.conf)
+        bbox = box.xyxy[0].tolist()
         detections.append({
-            'class': int(box.cls),
-            'confidence': float(box.conf),
-            'bbox': box.xyxy[0].tolist()
+            'class': cls,
+            'confidence': confidence,
+            'bbox': bbox
+        })
+        if cls in VEHICLE_CLASSES:
+            vehicles_count += 1
+
+    ocupado = 1 if vehicles_count > 0 else 0
+
+    # Si la petición es AJAX o JSON, devolver JSON solo con estado y conteo
+    if request.headers.get('Accept') == 'application/json' or request.is_json:
+        return jsonify({
+            "ocupado": ocupado,
+            "numero_detectados": vehicles_count,
+            "detections": detections
         })
 
+    # Si es formulario normal, renderizar la página con imagen y detecciones
     return render_template_string(HTML_PAGE, image_data=image_data, detections=detections)
 
 @app.route('/upload', methods=['GET'])
